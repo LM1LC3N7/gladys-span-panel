@@ -128,3 +128,8 @@
   panel is refused (m7). Equivalent mutant: the stale check of
   `publishRelay` (a relay change is itself a message, so the panel is never
   silent then); kept as defence.
+
+## Next patch
+
+- r3 m8: docs en/fr: the list of conditions for sending a relay command lacks the new refusal "panel silent
+  for 5 min" (`src/app.js:1065`).
