@@ -371,6 +371,8 @@ export const T = {
     disabled:
       'Opening and closing the circuit relays is off in the configuration of the integration: nothing sent.',
     notConnected: 'The panel is not connected right now: nothing sent.',
+    stale:
+      'The panel has sent nothing for several minutes: its relay state is not current, nothing sent.',
     notReady: 'The panel is not ready (or not the one paired): nothing sent.',
     unknownCircuit: 'This circuit is not in the panel right now: nothing sent.',
     notControllable:

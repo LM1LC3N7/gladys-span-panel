@@ -7,10 +7,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ACTIONS, STATES_PER_MINUTE, STORED } from '../src/constants.js';
-import { createMemoryStore } from '../src/store.js';
+import { createMemoryStore, fingerprint } from '../src/store.js';
 import { certs } from './kit/index.mjs';
 import { C, MINUTE, P, PIN, SECOND, createdDevices, settle, unit } from './helpers/app.js';
-import { BROKER_PASSWORD, DRYER, PV_CIRCUIT, SERIAL, retainedTree } from './helpers/fakePanel.js';
+import {
+  BROKER_PASSWORD,
+  BROKER_USER,
+  DRYER,
+  PV_CIRCUIT,
+  SERIAL,
+  retainedTree,
+} from './helpers/fakePanel.js';
 
 const text = (m) => (m && typeof m === 'object' ? `${m.en} ${m.fr}` : String(m));
 const status = (gladys) => text(gladys.fake.connectionStatus?.message);
@@ -571,4 +578,22 @@ test('a configuration saved while getConfig() fails: no retry of the old attempt
   assert.doesNotMatch(status(ctx.gladys), /could not be read from Gladys/);
   await ctx.clock.advance(2 * MINUTE);
   assert.equal(ctx.connector.clients.length, clients, 'no restart by the old attempt');
+});
+
+test('the stops read back after a restart; the test button never lifts a refusal of credentials', async () => {
+  const salt = 'a'.repeat(32);
+  const fp = fingerprint(salt, { username: BROKER_USER, password: BROKER_PASSWORD });
+  const unanswered = createMemoryStore({ salt, ca: PIN, refusal: { code: 'unanswered', fp } });
+  const a = await unit({ store: unanswered });
+  assert.equal(a.connector.clients.length, 0);
+  assert.match(status(a.gladys), /closed the connection twice without answering/);
+  // Same credentials as refused (its own fingerprint).
+  const ctx = await unit();
+  ctx.client().refuse(4);
+  await settle();
+  await ctx.gladys.fake.action(ACTIONS.TEST, {});
+  await ctx.clock.advance(MINUTE);
+  assert.equal(ctx.connector.clients.length, 1, 'no new try');
+  assert.equal(ctx.store.data.refusal.code, 'refused');
+  assert.match(status(ctx.gladys), /refuses the credentials/);
 });

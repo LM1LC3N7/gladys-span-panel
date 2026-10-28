@@ -3,7 +3,8 @@
 ## Before announcing
 
 - [x] Review r1 (2026-10-28): REFUSÉ, 0 blocker, 3 important, 6 minor: fixed.
-- [ ] Review r2.
+- [x] Review r2 (2026-10-28): REFUSÉ, 0 blocker, 2 important, 1 minor: fixed.
+- [ ] Review r3.
 - [ ] Test on a real Gladys 5.1+ with a real SPAN panel (firmware r202633 or
       later): pairing by passphrase and by proximity, device creation, the
       counters over a day, a relay opened and closed on an unimportant
@@ -120,3 +121,10 @@
   verification, which the pin `ca` restricts), `queueQoSZero: false` (a
   command is published only on a connected client), the tree created per
   session (`endClient` already drops it).
+- **Review r2**: under an accepted floor the acceptance margin restarts at each
+  reading (I4); a value above the acceptance drops it (a new acceptance is
+  needed). Tests for the `unanswered` stop read back and for the test button
+  that never lifts a refusal of credentials (I5). A relay command on a silent
+  panel is refused (m7). Equivalent mutant: the stale check of
+  `publishRelay` (a relay change is itself a message, so the panel is never
+  silent then); kept as defence.

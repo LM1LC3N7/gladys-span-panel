@@ -148,6 +148,8 @@ export class IndexGuard {
         // Under the floor accepted (a glitch): held, shown, never counted; the
         // acceptance stays for the value listed, which may come back.
         this.held = { direction: 'down', from: this.last.value, to: value, threshold: value, at };
+        // Its margin counts from now: a long glitch never widens it (review r2, I4).
+        this.accepted = { ...this.accepted, at };
         return false;
       }
       // Above what the user accepted: held again, the acceptance dropped.

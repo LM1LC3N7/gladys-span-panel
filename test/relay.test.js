@@ -214,3 +214,10 @@ test('a relay controllable but not declared settable by the panel: refused, noth
   assert.match((await command(ctx, PV_CIRCUIT, 'OPEN')).error, /does not allow/);
   assert.deepEqual(sent(ctx), []);
 });
+
+test('a panel silent too long: its relay state is not current, refused, nothing sent', async () => {
+  const ctx = await setup();
+  await ctx.clock.advance(6 * 60 * SECOND);
+  assert.match((await command(ctx, DRYER, 'OPEN')).error, /sent nothing for several minutes/);
+  assert.deepEqual(sent(ctx), []);
+});

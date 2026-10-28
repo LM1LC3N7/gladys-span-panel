@@ -1061,6 +1061,8 @@ export class SpanApp {
     if (!this.config.allowRelay) throw relayError('disabled');
     const client = this.client;
     if (!client || !this.up || !client.connected || !this.tree) throw relayError('notConnected');
+    // A panel silent too long: its state is not current (review r2, m7).
+    if (this.stale()) throw relayError('stale');
     if (this.config.stored?.serial !== serial) throw relayError('notReady');
     // The state of THIS session, read now (never a memory of a former one).
     const panel = readPanel(this.tree, serial);
