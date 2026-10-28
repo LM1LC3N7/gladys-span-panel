@@ -8,69 +8,90 @@ contributors.
 A Gladys Assistant **external integration**: a Node.js service (Node 22+, ESM,
 no build step) that runs in its own sandboxed Docker container and talks to
 Gladys through
-[`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
-its only runtime dependency. It started from the official JavaScript template.
+[`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js).
+Its runtime dependencies are the SDK and `mqtt` (MQTT.js). It started from the
+official JavaScript template.
+
+It reads a **SPAN smart electrical panel** through its official local API
+"eBus" (firmware r202633 or later, data model 1.x): the REST bootstrap for the
+pairing (`/api/v2/status`, `/api/v2/certificate/ca` over plain HTTP,
+`/api/v2/auth/register` over HTTPS pinned), then the MQTT broker of the panel
+over TLS pinned to its certificate authority, the Homie 5 tree under
+`ebus/5/#`. Ported from [span-panel-api](https://github.com/SpanPanel/span-panel-api)
+(MIT) with [SpanPanel/span](https://github.com/SpanPanel/span) (MIT) as a
+reference, see `THIRD_PARTY_NOTICES.md`. Unofficial. Siblings:
+`gladys-openems` (structure, app, store, guard), `gladys-pglab` (MQTT
+transport, PacketGuard), `gladys-p1-monitor` (the guard).
 
 ## Commands
 
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/e2e.test.js              # one file (a fake panel on 127.0.0.1)
+node --test --test-name-pattern "relay"   # tests whose name matches
+npm run audit                             # npm audit --omit=dev
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
-npm run format                            # Prettier, fix in place
-npx github:GladysAssistant/integration-store .   # store admission checks
+node scripts/cover.mjs cover.png          # the store cover (800×534)
 ```
-
-The CI (`.github/workflows/ci.yml`) runs `format:check`, `lint` and `test` on
-Node 22 and 24, and builds the Docker image: run the three commands before
-pushing.
 
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
-src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
-.github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
+index.js                          SDK wiring only (src/handlers.js)
+src/handlers.js                   every handler, registered before connect()
+src/app.js                        SpanApp: pairing, session, publication, counters, relays, buttons
+src/span/http.js                  REST bootstrap: status, authority (HTTP), registration (HTTPS pinned)
+src/span/tls.js                   the pin: TLS options, peer check, handshake probe, error words
+src/span/mqtt.js                  MQTTS to the panel: pinned stream, PacketGuard, mqtt.js client
+src/span/tree.js                  the Homie tree of ONE session, bounded (pure)
+src/span/panel.js                 what the tree says of the panel paired: identity, signs, units (pure)
+src/guard.js                      plausibility of a lifetime counter (gladys-openems, as it is)
+src/store.js                      what /data keeps across restarts (unreadable ≠ empty)
+src/devices.js                    the devices, feature keys, catalogs, states (pure)
+src/config.js                     the form and the credentials of the pairing, normalized
+src/constants.js                  timings, bounds, limits, manifest keys
+src/i18n.js                       runtime texts (en/fr)
+test/kit/                         copied from ~/code/ref/gladys-testkit (clocks, certificates)
+test/helpers/fakePanel.js         a fake panel: HTTP, HTTPS and an MQTTS broker on loopback
+test/helpers/fakeMqtt.js          a fake mqtt.js client for the unit tests
 ```
 
 ## Rules
 
-- **External ids are forever.** Build them with
-  `gladys.externalIds(type, platformId)`, `platformId` being the unique id the
-  platform gives the device (serial, cloud id, MAC), never a label. Gladys keys
-  devices, their history, scenes and dashboards on them: changing one creates a
-  new device and orphans the old one. The same goes for every key users store:
-  manifest `config_schema`, `actions`, widget and scene keys, feature keys.
-- **The container rootfs is read-only.** Write only under `/data`, the one
-  writable volume. Never log tokens, passwords or API keys.
-- **Versions belong to the Release workflow** (Actions → Release). Never edit
-  `version` in `package.json` or in the manifest, nor the `docker_image` tag,
-  by hand — except on the README's hand-pushed tag path, which bumps all three
-  together before tagging. `test/manifest.test.js` checks they agree.
-- **Changelog.** Every user-visible change adds a line under `## [Unreleased]`
-  in `CHANGELOG.md` (`### Added`, `Changed`, `Fixed`, `Removed`, `Security`).
-  Never write a version heading: the Release workflow moves the section, and it
-  becomes the notes of the GitHub Release.
-- **Manifest.** Texts are multi-language objects `{ "en": ..., "fr": ... }`:
-  `label`, `description` and `placeholder` alike, never a plain string. The
-  catalog `description` holds 10 to 100 characters per language. A field the
-  older cores do not know needs a higher `gladys_version` minimum
-  (`categories`: 4.86.0; `widgets`, `scene_triggers`, `scene_actions`,
-  `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
-  code (defaults, action, scene and widget handlers): change both sides
-  together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
-- **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
-  in English. Tests never touch the network.
+- **Relays are sensitive both ways**: opening cuts a circuit, closing powers it
+  again. Refused unless `allow_relay_control` (off by default), re-checked in
+  the same turn as the publication; decided on the tree of the current session
+  only; a `text/select` list, never a `switch` nor a `binary`; QoS 0, never
+  queued; one command at a time per circuit; success only on a state
+  published back that differs from the state before.
+- **Trust**: an authority read over plain HTTP is a candidate until the user
+  confirms its fingerprint (second click or typed); nothing is written to a
+  TLS socket before the peer is verified against the pin; a pin is never
+  replaced without the user. One registration per click, never automatic.
+- **Secrets**: the passphrase only goes into the registration over HTTPS
+  pinned; the broker credentials are kept by Gladys (`setConfig`, keys outside
+  the form), only sent in the CONNECT on the verified socket. Never logged,
+  shown, written to `/data` nor put in an error. Never the forbidden word for
+  secrets (`test/encoding.test.js`).
+- **Refusal**: credentials refused by the broker, or a CONNECT left unanswered
+  twice: a final stop in `/data`, lifted by a new pairing only.
+- **Freshness**: every session starts from an empty tree; a value counts only
+  while the root and its device say `$state` = ready.
+- **Lifetime counters** (the entries with `counter` in `src/devices.js`):
+  through `IndexGuard` on the session clock, never 0, never a drop nor a jump
+  without the two-click action; sent only once `/data` holds their guard.
+- **Clocks**: monotonic for every pace and deadline, the session clock for the
+  guards, the wall clock only for what `/data` keeps. Each decision reads each
+  clock once.
+- **External ids are forever**: `panel:<serial>`, `circuit:<serial>_<id>`, the
+  feature keys, the manifest keys, the `STORED` keys. A device published again
+  never loses a feature.
+- **Units**: only those of `DEVICE_FEATURE_UNITS_BY_CATEGORY` in the core.
+- **The container rootfs is read-only.** Write only `/data/span-panel-state.json`.
+- **Versions belong to the Release workflow.** Never edit `version` by hand.
+- **Changelog** under `## [Unreleased]`; **manifest** texts `{ en, fr }`; no
+  `default` on a secret; UTF-8 without BOM nor control byte.
+- **Tests never leave the machine** (127.0.0.1 only); `mkdtemp` folders are
+  removed in `t.after`.

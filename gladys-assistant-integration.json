@@ -1,177 +1,150 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "SPAN Panel",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Unofficial: SPAN smart electrical panel on your network, per circuit power and energy.",
+    "fr": "Non officiel : tableau électrique SPAN en local, puissance et énergie par circuit."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-span-panel:0.1.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-span-panel/main/cover.png",
+  "categories": ["energy"],
+  "transports": ["local"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": { "en": "SPAN panel", "fr": "Tableau SPAN" },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Unofficial connector, not affiliated with SPAN. It reads your SPAN panel (United States) through its official local API (eBus: the MQTT broker of the panel, firmware r202633 or later): power and energy per circuit, grid, solar, battery, main relay and the relay of each circuit. No cloud: the SPAN servers are never contacted. Enter the address, then click \"Pair with the panel\" (twice: the first click shows the fingerprint of the certificate authority of the panel). Opening or closing a circuit relay is off by default. Never tested with a real device.",
+        "fr": "Connecteur non officiel, sans lien avec SPAN. Il lit votre tableau SPAN (États-Unis) par son API locale officielle (eBus : le broker MQTT du tableau, firmware r202633 ou plus récent) : puissance et énergie par circuit, réseau, solaire, batterie, relais principal et relais de chaque circuit. Sans cloud : les serveurs SPAN ne sont jamais contactés. Saisissez l'adresse, puis cliquez sur « Appairer le panneau » (deux fois : le premier clic affiche l'empreinte de l'autorité de certification du tableau). Ouvrir ou fermer un relais de circuit est désactivé par défaut. Jamais testé avec un vrai appareil."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/LM1LC3N7/gladys-span-panel/blob/main/docs/fr.md",
+          "label": { "en": "Guide (French)", "fr": "Guide (français)" }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-span-panel/blob/main/docs/en.md",
+          "label": { "en": "Guide (English)", "fr": "Guide (anglais)" }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
+      "key": "host",
+      "type": "string",
       "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
+      "label": { "en": "Panel address", "fr": "Adresse du tableau" },
       "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+        "en": "The IP address (or host name) of the SPAN panel on your network, shown by your router or the SPAN app. Preferably give it a fixed address in your router.",
+        "fr": "L'adresse IP (ou le nom d'hôte) du tableau SPAN sur votre réseau, visible dans votre box ou l'application SPAN. Donnez-lui de préférence une adresse fixe dans votre box."
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
+      "placeholder": { "en": "e.g. 192.168.1.80", "fr": "ex. 192.168.1.80" }
     },
     {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
-      "required": false,
-      "default": "celsius",
-      "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
-      ]
-    },
-    {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "key": "passphrase",
+      "type": "secret",
+      "label": { "en": "Panel passphrase", "fr": "Phrase secrète du tableau" },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "Used only by the \"Pair with the panel\" button. The passphrase is printed on the label inside the door of the panel unless it was changed. Leave it empty to pair by proximity: open and close the door of the panel three times, then click the button. Kept by Gladys in its database, never shown again, sent only to the SPAN panel, over HTTPS checked against its certificate authority.",
+        "fr": "Utilisée seulement par le bouton « Appairer le panneau ». La phrase secrète est imprimée sur l'étiquette derrière la porte du tableau sauf si elle a été changée. Laissez-la vide pour appairer par proximité : ouvrez et fermez trois fois la porte du tableau, puis cliquez sur le bouton. Gardée par Gladys dans sa base, jamais réaffichée, envoyée seulement au tableau SPAN, en HTTPS vérifié contre son autorité de certification."
+      }
+    },
+    {
+      "key": "ca_fingerprint",
+      "type": "string",
+      "label": {
+        "en": "Certificate authority fingerprint (optional)",
+        "fr": "Empreinte de l'autorité de certification (facultatif)"
       },
-      "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "description": {
+        "en": "The SHA-256 fingerprint of the certificate authority of the panel, if you know it (another installation, or the status of this integration after a change of certificate). Typed here, it is trusted without the second click; it never has to be typed.",
+        "fr": "L'empreinte SHA-256 de l'autorité de certification du tableau, si vous la connaissez (une autre installation, ou l'état de cette intégration après un changement de certificat). Saisie ici, elle est adoptée sans le second clic ; elle n'est jamais obligatoire."
+      },
+      "placeholder": { "en": "AB:CD:EF:...", "fr": "AB:CD:EF:..." }
+    },
+    {
+      "key": "allow_relay_control",
+      "type": "boolean",
+      "label": {
+        "en": "Allow opening and closing the circuit relays",
+        "fr": "Permettre d'ouvrir et de fermer les relais des circuits"
+      },
+      "description": {
+        "en": "Off by default. Opening a relay cuts the power of a circuit of the house (a fridge, a medical device, a pump...); closing it powers the circuit again. On, the \"Relay\" list of each circuit the panel lets you command sends Open or Closed. Off, every command is refused and nothing is sent.",
+        "fr": "Désactivé par défaut. Ouvrir un relais coupe l'alimentation d'un circuit de la maison (un réfrigérateur, un appareil médical, une pompe...) ; le fermer le réalimente. Activé, la liste « Relais » de chaque circuit que le tableau laisse commander envoie Ouvert ou Fermé. Désactivé, toute commande est refusée et rien n'est envoyé."
+      },
+      "default": false
+    },
+    {
+      "key": "publish_interval",
+      "type": "number",
+      "label": {
+        "en": "Publication interval (seconds)",
+        "fr": "Intervalle de publication (secondes)"
+      },
+      "description": {
+        "en": "How often the power and energy values are sent to Gladys, from 30 to 600 seconds (the panel pushes its values; Gladys accepts 300 values a minute). A relay change is sent at once.",
+        "fr": "Fréquence d'envoi des puissances et énergies à Gladys, de 30 à 600 secondes (le tableau pousse ses valeurs ; Gladys accepte 300 valeurs par minute). Un changement de relais est envoyé tout de suite."
+      },
+      "default": 60,
+      "min": 30,
+      "max": 600
+    },
+    {
+      "key": "http_port",
+      "type": "number",
+      "label": { "en": "HTTP port (advanced)", "fr": "Port HTTP (avancé)" },
+      "description": {
+        "en": "Leave 80 unless the panel is reached through a port forwarding.",
+        "fr": "Laissez 80 sauf si le tableau est joint par une redirection de port."
+      },
+      "default": 80,
+      "min": 1,
+      "max": 65535
+    },
+    {
+      "key": "https_port",
+      "type": "number",
+      "label": { "en": "HTTPS port (advanced)", "fr": "Port HTTPS (avancé)" },
+      "description": {
+        "en": "Leave 443 unless the panel is reached through a port forwarding.",
+        "fr": "Laissez 443 sauf si le tableau est joint par une redirection de port."
+      },
+      "default": 443,
+      "min": 1,
+      "max": 65535
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
-      "timeout_seconds": 30
+      "key": "pair_panel",
+      "timeout_seconds": 60,
+      "label": { "en": "Pair with the panel", "fr": "Appairer le panneau" },
+      "description": {
+        "en": "First click: reads the certificate authority of the panel and shows its fingerprint (nothing secret sent). Second click (after a few seconds, within 5 min): trusts it, then registers Gladys with the panel over HTTPS (with the passphrase, or by proximity). Each successful pairing adds a client in the panel.",
+        "fr": "Premier clic : lit l'autorité de certification du tableau et affiche son empreinte (rien de secret envoyé). Second clic (après quelques secondes, dans les 5 min) : l'adopte, puis enregistre Gladys auprès du tableau en HTTPS (avec la phrase secrète, ou par proximité). Chaque appairage réussi ajoute un client dans le tableau."
+      }
     },
     {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
-    }
-  ],
-  "scene_triggers": [
-    {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
-      "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
-      },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
-        }
-      ],
-      "variables": [
-        {
-          "key": "target",
-          "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
-        }
-      ]
-    }
-  ],
-  "scene_actions": [
-    {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
-      },
+      "key": "test_connection",
       "timeout_seconds": 15,
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ],
-      "outputs": [
-        {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
-        }
-      ]
-    }
-  ],
-  "widgets": [
-    {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
+      "label": { "en": "Test the connection", "fr": "Tester la connexion" },
       "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
-      },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+        "en": "Shows the state of the session with the panel now (never a new connection).",
+        "fr": "Affiche l'état actuel de la session avec le tableau (jamais une nouvelle connexion)."
+      }
+    },
+    {
+      "key": "accept_held_counter",
+      "timeout_seconds": 30,
+      "label": { "en": "Accept the held counter", "fr": "Accepter le compteur retenu" },
+      "description": {
+        "en": "Only when the status shows an energy counter held back (a drop after a reset, or a jump) and it is right. First click: lists what is held. Second click (after a few seconds, within 5 min): accepts exactly that. Saving the configuration never accepts anything.",
+        "fr": "Seulement quand l'état affiche un compteur d'énergie retenu (une baisse après une remise à zéro, ou un saut) et qu'il est juste. Premier clic : liste ce qui est retenu. Second clic (après quelques secondes, dans les 5 min) : accepte exactement cela. Enregistrer la configuration n'accepte jamais rien."
+      }
     }
   ]
 }

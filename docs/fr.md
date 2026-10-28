@@ -1,67 +1,133 @@
-# Template de démonstration
+# Tableau SPAN
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Intégration non officielle, sans lien avec SPAN. Elle relie Gladys à un
+**tableau électrique intelligent SPAN** (États-Unis) par son API locale
+officielle, « eBus » : le broker MQTT qui tourne dans le tableau, en TLS. Sans
+cloud : les serveurs SPAN ne sont jamais contactés.
+
+**Jamais testé avec un vrai appareil.** Elle a été construite d'après la
+documentation du client libre span-panel-api, l'intégration Home Assistant
+SpanPanel/span et une capture d'un vrai tableau MAIN 32. Vos retours sont
+bienvenus sur le forum Gladys.
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+Un appareil pour le tableau :
 
-## Configuration
+- puissance réseau (+ importée, − exportée), production solaire, consommation
+  de la maison ;
+- puissance par les bornes principales et énergie tirée par elles (un index
+  pour le suivi énergétique de Gladys), énergie renvoyée (affichée, non
+  comptée) ;
+- niveau de la batterie, puissance de charge et de décharge, énergie restante
+  (quand une batterie est installée) ;
+- tension des deux phases ; relais principal, porte et état du réseau (textes).
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+Un appareil par circuit :
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+- puissance (consommation, ou production pour un circuit solaire) ;
+- énergie consommée (un index pour le suivi énergétique), ou énergie produite
+  pour un circuit solaire ;
+- la liste **Relais** (Fermé, Ouvert) et qui l'a réglé en dernier (USER,
+  LOAD_SHED, PCS…).
 
-## Actions
+## Prérequis
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+- Firmware **r202633 ou plus récent** (modèle de données 1.x). SPAN met les
+  tableaux à jour à distance. Les firmwares plus anciens publient le schéma
+  « plat », que cette intégration ne lit pas : l'état le dit.
+- Gladys 5.1 ou plus récent, sur le même réseau que le tableau.
 
-## Scènes
+## Appairage
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+1. Saisissez l'adresse du tableau (donnez-lui une adresse fixe dans votre box).
+2. Soit saisissez la **phrase secrète** du tableau (imprimée sur l'étiquette
+   derrière la porte sauf si elle a été changée), soit laissez-la vide pour
+   appairer **par proximité** : ouvrez et fermez trois fois la porte du
+   tableau juste avant l'étape suivante.
+3. Cliquez sur **Appairer le panneau**. Le premier clic lit l'autorité de
+   certification du tableau en HTTP simple et affiche son empreinte : rien de
+   secret n'est envoyé. Cette autorité n'est pas encore adoptée.
+4. Cliquez de nouveau après quelques secondes, dans les 5 minutes.
+   L'intégration vérifie que cette autorité signe le certificat HTTPS du
+   tableau, la garde dans `/data`, puis s'enregistre auprès du tableau en
+   HTTPS vérifié contre elle (la phrase secrète ne circule que là). Le tableau
+   répond par des identifiants pour son broker, que Gladys garde dans sa base
+   (jamais dans `/data`, jamais dans un journal).
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+Si vous connaissez déjà l'empreinte (une autre installation), saisissez-la
+dans « Empreinte de l'autorité de certification » : un seul clic suffit alors.
 
-## Tableau de bord
+Chaque appairage réussi ajoute un client dans le tableau : n'appairez de
+nouveau qu'en cas de besoin (nouveau tableau, identifiants refusés).
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+## Relais
 
-## Dépannage
+Ouvrir un relais **coupe l'alimentation d'un circuit** de la maison ; le fermer
+le réalimente. Les deux sont refusés tant que **Permettre d'ouvrir et de fermer
+les relais des circuits** est désactivé (c'est le réglage par défaut). La
+liste Relais est une liste, pas un interrupteur : une scène « tout éteindre »
+n'y touche pas.
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+Quand l'option est activée, une commande n'est envoyée que si tout ceci est
+vrai à ce moment (sinon elle est refusée et rien n'est envoyé) : l'option est
+toujours activée ; la session avec le tableau est ouverte ; le tableau est prêt
+et c'est celui qui est appairé ; le circuit est dans le tableau ; le tableau
+déclare son relais commandable (pas un circuit toujours alimenté, pas un
+circuit solaire) ; son état actuel est connu ; la commande n'a pas attendu plus
+de 2,5 s derrière une autre sur le même circuit. Une commande vers l'état où
+est déjà le relais n'envoie rien.
+
+Une commande n'est confirmée que quand le tableau publie le nouvel état, dans
+les 3 secondes environ après le clic. Sinon Gladys indique « Envoyée, sans
+confirmation » : l'état affiché suit dès que le tableau le publie. Rien n'est
+mis en file d'attente quand le tableau est injoignable.
+
+Les priorités de délestage, le relais principal et les bornes de recharge ne
+sont pas commandés.
+
+## Compteurs d'énergie
+
+Les compteurs à vie (énergie par circuit, par les bornes principales) passent
+par une garde : une valeur à 0, une baisse (une remise à zéro du tableau) ou un
+saut plus grand que ce qu'un circuit peut tirer (60 kW) ou que les bornes
+principales peuvent porter (120 kW) depuis la dernière valeur est **retenue** :
+Gladys continue de recevoir la dernière valeur acceptée, et l'état liste ce
+qui est retenu. Le temps ne fait pas accepter une valeur retenue. Si elle est
+réelle (compteur remis à zéro, tableau remplacé), cliquez deux fois sur
+**Accepter le compteur retenu** : le premier clic liste, le second (après
+quelques secondes, dans les 5 minutes) accepte exactement ce qui a été listé.
+Une valeur retenue le reste après un redémarrage. Une limite : la marge
+compte le temps écoulé depuis la dernière valeur acceptée avec l'horloge du
+système à travers un redémarrage de l'intégration, donc une horloge système
+fausse de plusieurs heures à ce moment-là l'élargit pour la première valeur.
+
+## Publication
+
+Le tableau pousse ses valeurs ; Gladys les reçoit toutes les 60 secondes par
+défaut (30 à 600 s), dans la limite de 300 valeurs par minute (les circuits
+au-delà sont servis à tour de rôle aux publications suivantes). Un changement
+de relais est envoyé tout de suite. Les valeurs ne sont publiées que tant que
+le tableau et l'appareil auquel elles appartiennent se disent prêts ; après
+une reconnexion, rien n'est publié avant que le tableau se soit de nouveau
+décrit.
+
+## État et pannes
+
+- Identifiants refusés par le broker (ou connexion fermée deux fois sans
+  réponse) : les connexions s'arrêtent jusqu'au prochain appairage.
+- Tableau injoignable : nouveaux essais après 5 s, 15 s, 30 s, 1 min, 2 min,
+  puis toutes les 5 min.
+- Un certificat que l'autorité épinglée ne signe pas : rien n'est envoyé à ce
+  pair. L'état affiche l'autorité que le tableau annonce maintenant (si elle a
+  changé). Elle n'est pas adoptée d'elle-même : saisissez son empreinte dans la
+  configuration et enregistrez, ou appairez de nouveau (deux clics).
+- « Tester la connexion » affiche l'état de la session en cours (il n'ouvre pas
+  de nouvelle connexion).
+
+## Vie privée
+
+La phrase secrète et les identifiants du broker ne sont envoyés qu'au tableau.
+L'intégration n'écrit dans `/data` que l'autorité de certification du tableau
+(publique), l'état des gardes d'énergie et, tant que le broker refuse les
+identifiants, une empreinte de 8 bits de ceux-ci.
