@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-28
+
 ### Added
 
 - SPAN smart electrical panels through their official local API (eBus, the
@@ -23,3 +25,6 @@ the notes of the version's GitHub Release.
   state the panel publishes back.
 - Energy indexes per circuit and through the main lugs, guarded: a 0, a drop
   or an implausible jump is held until a two-click acceptance.
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-span-panel/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-span-panel/releases/tag/v0.1.1

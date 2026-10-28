@@ -1,6 +1,6 @@
 {
   "name": "gladys-span-panel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "SPAN smart electrical panel for Gladys Assistant, through its official local API (eBus, MQTT): power and energy per circuit, grid, solar, battery, relay states, and opening or closing the circuit relays (off by default).",
   "type": "module",
