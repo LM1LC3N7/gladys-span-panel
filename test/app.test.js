@@ -166,6 +166,11 @@ test('credentials refused: a final stop kept in /data, lifted by a new pairing o
   assert.match(store.data.refusal.fp, /^[0-9a-f]{2}$/);
   await ctx.clock.advance(30 * MINUTE);
   assert.equal(ctx.connector.clients.length, 1, 'never tried again by itself');
+  // A save of the form (same credentials): still stopped.
+  await ctx.gladys.fake.configUpdated({ ...ctx.gladys.fake.config });
+  await ctx.app.idle();
+  assert.equal(ctx.connector.clients.length, 1);
+  assert.equal(store.data.refusal.code, 'refused');
   // A restart (same credentials): still stopped.
   const again = await unit({ store });
   assert.equal(again.connector.clients.length, 0);
@@ -177,7 +182,7 @@ test('credentials refused: a final stop kept in /data, lifted by a new pairing o
   assert.equal(store.data.refusal, null);
 });
 
-test('a CONNECT left unanswered twice in a row: a final stop too', async () => {
+test('a CONNECT closed unanswered twice: tries stopped, said as such, one try per test click', async () => {
   const ctx = await unit();
   ctx.client().unanswered();
   await ctx.clock.advance(5 * SECOND);
@@ -185,7 +190,23 @@ test('a CONNECT left unanswered twice in a row: a final stop too', async () => {
   ctx.client().unanswered();
   await ctx.clock.advance(10 * MINUTE);
   assert.equal(ctx.connector.clients.length, 2);
-  assert.equal(ctx.store.data.refusal.code, 'refused');
+  assert.equal(ctx.store.data.refusal.code, 'unanswered');
+  assert.match(status(ctx.gladys), /closed the connection twice without answering/);
+  assert.doesNotMatch(status(ctx.gladys), /refuses the credentials/);
+  // The test button: one new try.
+  await ctx.gladys.fake.action(ACTIONS.TEST, {});
+  assert.equal(ctx.connector.clients.length, 3);
+  ctx.client().unanswered();
+  await ctx.clock.advance(10 * MINUTE);
+  assert.equal(ctx.connector.clients.length, 3, 'one try per click');
+  assert.equal(ctx.store.data.refusal.code, 'unanswered');
+  // A save of the configuration: one new try too, which succeeds here.
+  await ctx.gladys.fake.configUpdated({ ...ctx.gladys.fake.config });
+  await ctx.app.idle();
+  assert.equal(ctx.connector.clients.length, 4);
+  ctx.client().open();
+  await settle();
+  assert.equal(ctx.store.data.refusal ?? null, null);
 });
 
 test('getConfig() failing in `connected` is asked again without end, then starts', async () => {
@@ -422,6 +443,109 @@ test('a CONNECT unanswered, then a session, then unanswered again: no stop (not 
   await ctx.clock.advance(30 * SECOND);
   assert.equal(ctx.store.data.refusal ?? null, null);
   assert.equal(ctx.connector.clients.length, 4);
+});
+
+test('the budget against the limit of the core (300 states a minute), not our own constant', async () => {
+  const topics = bigTree(44);
+  const ctx = await unit({ devices: createdDevices(topics), config: { publish_interval: 30 } });
+  await ready(ctx, topics);
+  const { fake } = ctx.gladys;
+  // 250 states sent in the last seconds (other publications).
+  ctx.app.sent = [{ at: ctx.app.monotonic(), count: 250 }];
+  for (const [topic, payload] of topics) {
+    if (/active-power$/.test(topic)) ctx.client().deliver(topic, '-77');
+    if (/exported-energy$|imported-energy$/.test(topic)) {
+      ctx.client().deliver(topic, String(Number(payload) + 100));
+    }
+  }
+  const before = fake.states.length;
+  await ctx.clock.advance(40 * SECOND);
+  const sent = fake.states.length - before;
+  assert.ok(sent <= 300 - 250, `${sent} sent`);
+  assert.ok(sent > 0, 'the room left is used');
+});
+
+test('the margins of the guards: 60 kW per circuit, 120 kW for the main lugs', async () => {
+  const ctx = await unit({ devices: createdDevices() });
+  await ready(ctx);
+  const { fake } = ctx.gladys;
+  const circuit = C(DRYER, 'consumption_index');
+  const lugs = P('feed_import_index');
+  const lugsTopic = `ebus/5/${SERIAL}-lugs-up/meter/imported-energy`;
+  // 65 s: a circuit may draw 60 kW × 65 s + 0.5 = 1.58 kWh; the lugs 120 kW × 65 s + 1 = 3.17 kWh.
+  ctx.client().deliver(`ebus/5/${DRYER}/meter/exported-energy`, String(855286.5 + 1500));
+  ctx.client().deliver(lugsTopic, String(27610149.5 + 3000));
+  await ctx.clock.advance(65 * SECOND);
+  assert.equal(fake.lastState(circuit), 856.787);
+  assert.equal(fake.lastState(lugs), 27613.15);
+  ctx.client().deliver(`ebus/5/${DRYER}/meter/exported-energy`, String(856786.5 + 3000));
+  ctx.client().deliver(lugsTopic, String(27613149.5 + 5000));
+  await ctx.clock.advance(65 * SECOND);
+  assert.equal(fake.lastState(circuit), 856.787, '+3 kWh in 65 s held for a circuit');
+  assert.equal(fake.lastState(lugs), 27613.15, '+5 kWh in 65 s held for the lugs');
+});
+
+test('an accepted drop is a floor: a lower value later is held again', async () => {
+  const ctx = await unit({ devices: createdDevices() });
+  await ready(ctx);
+  const { fake } = ctx.gladys;
+  const id = C(DRYER, 'consumption_index');
+  ctx.client().deliver(`ebus/5/${DRYER}/meter/exported-energy`, '12000');
+  await ctx.clock.advance(65 * SECOND);
+  await fake.action(ACTIONS.ACCEPT_HELD, {});
+  await ctx.clock.advance(4 * SECOND);
+  await fake.action(ACTIONS.ACCEPT_HELD, {});
+  ctx.client().deliver(`ebus/5/${DRYER}/meter/exported-energy`, '5000');
+  await ctx.clock.advance(65 * SECOND);
+  assert.ok(
+    !fake.states.some((s) => s.device_feature_external_id === id && s.state === 5),
+    'never 5 kWh without a click',
+  );
+  assert.equal(ctx.app.guards.get(id).held.to, 5);
+  // The value accepted comes back: it follows, from the floor accepted.
+  ctx.client().deliver(`ebus/5/${DRYER}/meter/exported-energy`, '12100');
+  await ctx.clock.advance(65 * SECOND);
+  assert.equal(fake.lastState(id), 12.1);
+  assert.equal(ctx.app.guards.get(id).held, undefined);
+});
+
+test('the acceptance is bounded to what was listed: a jump grown since is not taken', async () => {
+  const ctx = await unit({ devices: createdDevices() });
+  await ready(ctx);
+  const { fake } = ctx.gladys;
+  const id = C(DRYER, 'consumption_index');
+  ctx.client().deliver(`ebus/5/${DRYER}/meter/exported-energy`, '900000000');
+  await ctx.clock.advance(65 * SECOND);
+  const first = await fake.action(ACTIONS.ACCEPT_HELD, {});
+  assert.match(text(first.data.message), /855\.287 → 900000 kWh/);
+  ctx.client().deliver(`ebus/5/${DRYER}/meter/exported-energy`, '20000000000');
+  await ctx.clock.advance(65 * SECOND);
+  const second = await fake.action(ACTIONS.ACCEPT_HELD, {});
+  assert.match(text(second.data.message), /Not accepted, the value changed/);
+  assert.equal(fake.lastState(id), 855.287);
+});
+
+test('a panel silent 5 min: nothing republished as new, the status says so', async () => {
+  const ctx = await unit({ devices: createdDevices() });
+  await ready(ctx);
+  const { fake } = ctx.gladys;
+  const count = fake.states.length;
+  await ctx.clock.advance(6 * MINUTE);
+  assert.match(status(ctx.gladys), /has sent nothing for 6 min/);
+  assert.equal(fake.connectionStatus.connected, false);
+  const during = fake.states.length;
+  await ctx.clock.advance(30 * MINUTE);
+  assert.equal(fake.states.length, during, 'no heartbeat of stale values');
+  assert.ok(during - count <= 40);
+  // A device created meanwhile gets nothing stale either.
+  const [panelDevice] = createdDevices();
+  await fake.deviceCreated(panelDevice);
+  await settle();
+  assert.equal(fake.states.length, during);
+  // A message again: published at the next interval.
+  ctx.client().deliver(`ebus/5/${DRYER}/meter/active-power`, '-321');
+  await ctx.clock.advance(65 * SECOND);
+  assert.equal(fake.lastState(C(DRYER, 'power')), 321);
 });
 
 test('budget spent: a relay change waits, never beyond 270 states a minute', async () => {

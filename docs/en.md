@@ -81,13 +81,14 @@ The shed priorities, the main relay and the EV chargers are not commanded.
 ## Energy counters
 
 The lifetime counters (energy per circuit, through the main lugs) go through a
-guard: a value of 0, a drop (a reset of the panel) or a jump larger than what a
-circuit can draw (60 kW) or the main lugs can carry (120 kW) since the last
-value is **held**: Gladys keeps receiving the last accepted value, and the
+guard. A value of 0 is ignored (never published). A drop (a reset of the
+panel) or a jump larger than what a circuit can draw (60 kW) or the main lugs
+can carry (120 kW) since the last value is **held**: Gladys keeps receiving the last accepted value, and the
 status lists what is held. Time does not take a held value. If it is real (a
 counter reset, a replaced panel), click **Accept the held counter** twice: the
 first click lists, the second (after a few seconds, within 5 minutes) accepts
-exactly what was listed. A held value survives a restart. One limit: the
+exactly what was listed; an accepted drop is a new floor (a lower value later
+is held again). A held value survives a restart. One limit: the
 margin counts the time since the last accepted value with the clock of the
 system across a restart of the integration, so a system clock wrong by hours
 at that moment widens it for the first value.
@@ -103,20 +104,28 @@ described itself again.
 
 ## Status and failures
 
-- Credentials refused by the broker (or the connection closed twice without an
-  answer): connections stop until the next pairing.
+- Credentials refused by the broker: connections stop until the next pairing.
+- The broker closed the connection twice without answering (a panel
+  restarting, another service at the address): automatic tries stop; "Test the
+  connection" tries once per click, saving the configuration tries once.
+- The panel sends nothing for 5 minutes while connected: its values are no
+  longer published as current, the status says so, until it speaks again.
 - Panel unreachable: new tries after 5 s, 15 s, 30 s, 1 min, 2 min, then every
   5 min.
 - A certificate the pinned authority does not sign: nothing is sent to that
   peer. The status shows the authority the panel now advertises (if it
   changed). It is not trusted by itself: type its fingerprint in the
-  configuration and save, or pair again (two clicks).
+  configuration and save, or empty the fingerprint field, save, and pair again
+  (two clicks).
 - "Test the connection" shows the state of the current session (it opens no
-  new connection).
+  new connection, except one try after the broker closed twice without
+  answering).
 
 ## Privacy
 
 The passphrase and the broker credentials are only sent to the panel. The
 integration writes to `/data` only the certificate authority of the panel
-(public), the state of the energy guards, and, while the broker refuses the
-credentials, an 8-bit fingerprint of them.
+(public), the one it advertised when the pin refused its certificate
+(public), a random salt, the state of the energy guards, and, while the
+broker refuses the credentials (or closed twice without answering), an 8-bit
+salted fingerprint of them.

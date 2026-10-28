@@ -89,15 +89,17 @@ sont pas commandés.
 ## Compteurs d'énergie
 
 Les compteurs à vie (énergie par circuit, par les bornes principales) passent
-par une garde : une valeur à 0, une baisse (une remise à zéro du tableau) ou un
-saut plus grand que ce qu'un circuit peut tirer (60 kW) ou que les bornes
-principales peuvent porter (120 kW) depuis la dernière valeur est **retenue** :
+par une garde. Une valeur à 0 est ignorée (jamais publiée). Une baisse (une
+remise à zéro du tableau) ou un saut plus grand que ce qu'un circuit peut tirer
+(60 kW) ou que les bornes principales peuvent porter (120 kW) depuis la
+dernière valeur est **retenue** :
 Gladys continue de recevoir la dernière valeur acceptée, et l'état liste ce
 qui est retenu. Le temps ne fait pas accepter une valeur retenue. Si elle est
 réelle (compteur remis à zéro, tableau remplacé), cliquez deux fois sur
 **Accepter le compteur retenu** : le premier clic liste, le second (après
 quelques secondes, dans les 5 minutes) accepte exactement ce qui a été listé.
-Une valeur retenue le reste après un redémarrage. Une limite : la marge
+Une baisse acceptée devient un plancher (une valeur plus basse ensuite est de
+nouveau retenue). Une valeur retenue le reste après un redémarrage. Une limite : la marge
 compte le temps écoulé depuis la dernière valeur acceptée avec l'horloge du
 système à travers un redémarrage de l'intégration, donc une horloge système
 fausse de plusieurs heures à ce moment-là l'élargit pour la première valeur.
@@ -114,20 +116,31 @@ décrit.
 
 ## État et pannes
 
-- Identifiants refusés par le broker (ou connexion fermée deux fois sans
-  réponse) : les connexions s'arrêtent jusqu'au prochain appairage.
+- Identifiants refusés par le broker : les connexions s'arrêtent jusqu'au
+  prochain appairage.
+- Le broker a fermé deux fois la connexion sans répondre (un tableau qui
+  redémarre, un autre service à cette adresse) : les essais automatiques
+  s'arrêtent ; « Tester la connexion » fait un essai par clic, enregistrer la
+  configuration en fait un.
+- Le tableau n'envoie rien pendant 5 minutes alors qu'il est connecté : ses
+  valeurs ne sont plus publiées comme actuelles, l'état le dit, jusqu'à ce
+  qu'il reparle.
 - Tableau injoignable : nouveaux essais après 5 s, 15 s, 30 s, 1 min, 2 min,
   puis toutes les 5 min.
 - Un certificat que l'autorité épinglée ne signe pas : rien n'est envoyé à ce
   pair. L'état affiche l'autorité que le tableau annonce maintenant (si elle a
   changé). Elle n'est pas adoptée d'elle-même : saisissez son empreinte dans la
-  configuration et enregistrez, ou appairez de nouveau (deux clics).
+  configuration et enregistrez, ou videz le champ de l'empreinte, enregistrez
+  et appairez de nouveau (deux clics).
 - « Tester la connexion » affiche l'état de la session en cours (il n'ouvre pas
-  de nouvelle connexion).
+  de nouvelle connexion, sauf un essai après deux fermetures sans réponse du
+  broker).
 
 ## Vie privée
 
 La phrase secrète et les identifiants du broker ne sont envoyés qu'au tableau.
 L'intégration n'écrit dans `/data` que l'autorité de certification du tableau
-(publique), l'état des gardes d'énergie et, tant que le broker refuse les
-identifiants, une empreinte de 8 bits de ceux-ci.
+(publique), celle qu'il annonçait quand l'épingle a refusé son certificat
+(publique), un sel aléatoire, l'état des gardes d'énergie et, tant que le
+broker refuse les identifiants (ou a fermé deux fois sans répondre), une
+empreinte salée de 8 bits de ceux-ci.

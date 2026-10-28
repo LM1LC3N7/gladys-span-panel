@@ -93,7 +93,9 @@ test('the second click too soon, too late, or for another authority: listed agai
   const ctx = await setup();
   await ctx.pair();
   await ctx.clock.advance(SECOND);
-  assert.match(await ctx.pair(), /Nothing was sent yet/, 'under 3 s');
+  const early = await ctx.pair();
+  assert.match(early, /Nothing was sent yet/, 'under 3 s');
+  assert.doesNotMatch(early, /differs from the one shown/, 'the same authority');
   await ctx.clock.advance(6 * 60 * SECOND);
   assert.match(await ctx.pair(), /Nothing was sent yet/, 'over 5 min');
   ctx.http.getCa = async () => NEW;
@@ -240,5 +242,38 @@ test('the authority seen after a pin failure is pinned when the user types its f
   await ctx.app.idle();
   assert.equal(store.data.ca.fingerprint, NEW.fingerprint);
   assert.equal(store.data.seen, null);
+  assert.equal(ctx.client().config.pin.fingerprint, NEW.fingerprint);
+});
+
+test('another authority at the second click: said plainly, nothing trusted, two clicks again', async () => {
+  const ctx = await setup();
+  await ctx.pair();
+  await ctx.clock.advance(4 * SECOND);
+  ctx.http.getCa = async () => NEW;
+  const second = await ctx.pair();
+  assert.match(second, /differs from the one shown at the previous click/);
+  assert.equal(ctx.http.calls.register.length, 0);
+  await ctx.clock.advance(4 * SECOND);
+  assert.match(await ctx.pair(), /Paired with/);
+});
+
+test('the fingerprint typed matches the authority seen but /data cannot keep it: no pin, no session', async () => {
+  const store = createMemoryStore({ ca: PIN, seen: NEW });
+  const ctx = await unit({ store });
+  const clients = ctx.connector.clients.length;
+  store.failSave = true;
+  await ctx.gladys.fake.configUpdated({
+    ...ctx.gladys.fake.config,
+    ca_fingerprint: shownFingerprint(NEW.fingerprint),
+  });
+  await ctx.app.idle();
+  assert.equal(ctx.app.kept.ca.fingerprint, PIN.fingerprint);
+  assert.equal(ctx.app.kept.seen.fingerprint, NEW.fingerprint);
+  assert.equal(ctx.connector.clients.length, clients, 'no session on a pin /data does not hold');
+  assert.match(text(ctx.gladys.fake.connectionStatus.message), /could not be kept in \/data/);
+  store.failSave = false;
+  await ctx.gladys.fake.configUpdated({ ...ctx.gladys.fake.config });
+  await ctx.app.idle();
+  assert.equal(store.data.ca.fingerprint, NEW.fingerprint);
   assert.equal(ctx.client().config.pin.fingerprint, NEW.fingerprint);
 });

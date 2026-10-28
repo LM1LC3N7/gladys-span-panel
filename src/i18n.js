@@ -124,6 +124,18 @@ export const T = {
     en: `Connecting to the SPAN panel at ${host}…`,
     fr: `Connexion au panneau SPAN à ${host}…`,
   }),
+  unansweredStop: {
+    en: 'The broker of the panel closed the connection twice without answering (a panel restarting, or another service at this address): automatic tries stopped. Click "Test the connection" (one try per click) or save the configuration to try again; pair again if it goes on.',
+    fr: 'Le broker du panneau a fermé deux fois la connexion sans répondre (un panneau qui redémarre, ou un autre service à cette adresse) : essais automatiques arrêtés. Cliquez sur « Tester la connexion » (un essai par clic) ou enregistrez la configuration pour réessayer ; appairez de nouveau si cela continue.',
+  },
+  pinNotSaved: {
+    en: 'The certificate authority of the fingerprint typed could not be kept in /data: it is not pinned and nothing connects. Save the configuration again (or restart the integration).',
+    fr: 'L’autorité de certification de l’empreinte saisie n’a pas pu être gardée dans /data : elle n’est pas épinglée et rien ne se connecte. Enregistrez de nouveau la configuration (ou redémarrez l’intégration).',
+  },
+  stale: (ms) => ({
+    en: `The panel has sent nothing for ${delay(ms).en}: its values are no longer published as current.`,
+    fr: `Le panneau n’a rien envoyé depuis ${delay(ms).fr} : ses valeurs ne sont plus publiées comme actuelles.`,
+  }),
   refused: {
     en: 'The broker of the panel refuses the credentials of the pairing: click "Pair with the panel" again. No automatic new try until then.',
     fr: 'Le broker du panneau refuse les identifiants de l’appairage : cliquez de nouveau sur « Appairer le panneau ». Aucun nouvel essai automatique d’ici là.',
@@ -140,8 +152,8 @@ export const T = {
       },
       seen
         ? {
-            en: `It now advertises the authority ${fp(seen)}. It is never trusted by itself: if it is really your panel, type this fingerprint in the configuration and save, or click "Pair with the panel" twice.`,
-            fr: `Il annonce maintenant l’autorité ${fp(seen)}. Elle n’est jamais adoptée d’elle-même : si c’est bien votre panneau, saisissez cette empreinte dans la configuration et enregistrez, ou cliquez deux fois sur « Appairer le panneau ».`,
+            en: `It now advertises the authority ${fp(seen)}. It is never trusted by itself: if it is really your panel, type this fingerprint in the configuration and save, or empty the fingerprint field, save and click "Pair with the panel" twice.`,
+            fr: `Il annonce maintenant l’autorité ${fp(seen)}. Elle n’est jamais adoptée d’elle-même : si c’est bien votre panneau, saisissez cette empreinte dans la configuration et enregistrez, ou videz le champ de l’empreinte, enregistrez et cliquez deux fois sur « Appairer le panneau ».`,
           }
         : { en: '', fr: '' },
       {
@@ -226,8 +238,14 @@ export const T = {
       en: `The panel advertises the certificate authority ${fp(seen)}, not the fingerprint typed in the configuration (${fp(typed)}): nothing trusted, nothing sent. Check the fingerprint.`,
       fr: `Le panneau annonce l’autorité de certification ${fp(seen)}, pas l’empreinte saisie dans la configuration (${fp(typed)}) : rien d’adopté, rien d’envoyé. Vérifiez l’empreinte.`,
     }),
-    confirmPin: (serial, seen, pinned, within) =>
+    confirmPin: (serial, seen, pinned, within, previous) =>
       both([
+        previous
+          ? {
+              en: `Warning: this certificate authority (${fp(seen)}) differs from the one shown at the previous click (${fp(previous)}): something may be answering instead of your panel. Nothing trusted.`,
+              fr: `Attention : cette autorité de certification (${fp(seen)}) diffère de celle affichée au clic précédent (${fp(previous)}) : quelque chose répond peut-être à la place de votre panneau. Rien d’adopté.`,
+            }
+          : undefined,
         pinned
           ? {
               en: `The panel ${serial} now advertises another certificate authority: ${fp(seen)} (pinned until now: ${fp(pinned)}).`,
@@ -238,8 +256,8 @@ export const T = {
               fr: `Le panneau ${serial} annonce l’autorité de certification ${fp(seen)}.`,
             },
         {
-          en: `It was read without protection: trust it only if it is your panel (the SPAN app or another installation can show it). Click "Pair with the panel" again, after a few seconds and within ${delay(within).en}, to trust it and pair; or type it in the configuration. Nothing was sent yet.`,
-          fr: `Elle a été lue sans protection : ne l’adoptez que si c’est bien votre panneau (l’application SPAN ou une autre installation peut l’afficher). Cliquez de nouveau sur « Appairer le panneau », après quelques secondes et dans les ${delay(within).fr}, pour l’adopter et appairer ; ou saisissez-la dans la configuration. Rien n’a encore été envoyé.`,
+          en: `It was read without protection: trust it only if it is your panel (another installation can show it; a device posing as the panel would look exactly like this). Click "Pair with the panel" again, after a few seconds and within ${delay(within).en}, to trust it and pair; or type it in the configuration. Nothing was sent yet.`,
+          fr: `Elle a été lue sans protection : ne l’adoptez que si c’est bien votre panneau (une autre installation peut l’afficher ; un appareil qui se ferait passer pour le panneau ressemblerait exactement à ceci). Cliquez de nouveau sur « Appairer le panneau », après quelques secondes et dans les ${delay(within).fr}, pour l’adopter et appairer ; ou saisissez-la dans la configuration. Rien n’a encore été envoyé.`,
         },
       ]),
     notSigned: (host, code) => ({

@@ -133,8 +133,8 @@
       "timeout_seconds": 15,
       "label": { "en": "Test the connection", "fr": "Tester la connexion" },
       "description": {
-        "en": "Shows the state of the session with the panel now (never a new connection).",
-        "fr": "Affiche l'état actuel de la session avec le tableau (jamais une nouvelle connexion)."
+        "en": "Shows the state of the session with the panel now. Opens no new connection, except one try after the broker of the panel closed twice without answering.",
+        "fr": "Affiche l'état actuel de la session avec le tableau. N'ouvre pas de nouvelle connexion, sauf un essai après deux fermetures sans réponse du broker du tableau."
       }
     },
     {

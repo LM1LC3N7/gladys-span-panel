@@ -130,11 +130,14 @@ export function validCa(ca) {
     : undefined;
 }
 
-/** A refusal read back: `{ code: 'refused', fp }`, a final stop (no end). */
+/**
+ * A stop read back: `{ code: 'refused' | 'unanswered', fp }` (credentials
+ * refused, or the CONNECT closed twice without answer), no end by time.
+ */
 export function validRefusal(refusal) {
   if (
     !isObject(refusal) ||
-    refusal.code !== 'refused' ||
+    (refusal.code !== 'refused' && refusal.code !== 'unanswered') ||
     typeof refusal.fp !== 'string' ||
     !FP.test(refusal.fp)
   ) {

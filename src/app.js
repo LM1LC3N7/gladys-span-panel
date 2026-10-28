@@ -62,11 +62,13 @@ import {
   RECONNECT,
   RELAY,
   SEND_WITHIN,
+  STALE_AFTER,
   STATE_HEARTBEAT,
   STATES_PER_MINUTE,
   STORED,
   SUBSCRIPTION,
   TOPIC_ROOT,
+  UNANSWERED_STOP,
 } from './constants.js';
 import {
   CIRCUIT_CATALOG,
@@ -98,8 +100,6 @@ const TICK = 5_000;
 const REFRESH_DELAY = 1_000;
 /** A relay change is published this long after it arrived (its requester comes with it). */
 const RELAY_PUBLISH_DELAY = 300;
-/** A CONNECT left unanswered this many times in a row: a final stop. */
-const UNANSWERED_STOP = 2;
 
 /** The value Gladys already holds for a feature of a created device, when it says so. */
 function lastValueOf(device, featureId) {
@@ -297,19 +297,38 @@ export class SpanApp {
         changed = true;
       }
     }
+    if (this.kept.refusal?.code === 'unanswered' && fresh) {
+      // A broker that closed without answering is not a refusal of the
+      // credentials: a save of the configuration tries again (once).
+      this.kept.refusal = null;
+      this.unansweredLeft = 1;
+      changed = true;
+    }
     const typed = this.config.fingerprint;
+    this.pinNotSaved = false;
+    let repin;
     if (typed && this.kept.seen?.fingerprint === typed && this.kept.ca?.fingerprint !== typed) {
       // The user typed the fingerprint of the authority the panel advertised
-      // when the pin refused its certificate: that one is pinned now.
+      // when the pin refused its certificate: that one is pinned now, once
+      // /data holds it (review r1, I2).
+      repin = { ca: this.kept.ca, seen: this.kept.seen };
       this.kept.ca = this.kept.seen;
       this.kept.seen = null;
       changed = true;
-      this.logger.info('SPAN: the certificate authority typed in the configuration is pinned');
     }
     if (previous.host && previous.host !== this.config.host) {
       this.pendingPin = undefined;
     }
-    await this.saveState({ force: changed });
+    const saved = await this.saveState({ force: changed });
+    if (repin) {
+      if (saved) {
+        this.logger.info('SPAN: the certificate authority typed in the configuration is pinned');
+      } else {
+        // Not kept: the former pin and what was seen stay, no session opens.
+        Object.assign(this.kept, repin);
+        this.pinNotSaved = true;
+      }
+    }
     // The core keeps the connection status and the Discovery list in memory:
     // a restarted Gladys has lost them, so they are always sent again.
     this.lastStatus = undefined;
@@ -320,6 +339,7 @@ export class SpanApp {
     this.retryAtMono = undefined;
     this.lastError = undefined;
     this.tickTimer = this.timers.setInterval(() => this.tick(generation), TICK);
+    // blocked() keeps the session closed on a pin /data does not hold.
     this.openSession(generation);
     await this.updateStatus();
   }
@@ -401,6 +421,7 @@ export class SpanApp {
     // An unreadable /data holds no pin (kept.ca is null): no session either.
     if (!this.config.stored || !this.kept.ca) return 'notPaired';
     if (this.kept.refusal) return 'refused';
+    if (this.pinNotSaved) return 'pinNotSaved';
     return undefined;
   }
 
@@ -412,6 +433,7 @@ export class SpanApp {
     const pin = this.kept.ca;
     this.tree = new HomieTree();
     this.up = false;
+    this.lastMessageMono = undefined;
     this.panel = undefined;
     let opened = false;
     let pending = false;
@@ -443,6 +465,8 @@ export class SpanApp {
       if (!current()) return;
       this.up = true;
       this.unanswered = 0;
+      this.unansweredLeft = undefined;
+      this.lastMessageMono = this.monotonic();
       this.lastError = undefined;
       this.retryAtMono = undefined;
       client.subscribe(SUBSCRIPTION, { qos: 0 }, () => {});
@@ -472,8 +496,10 @@ export class SpanApp {
       if (unanswered) {
         this.unanswered += 1;
         this.lastError = 'unanswered';
-        if (this.unanswered >= UNANSWERED_STOP) {
-          this.onRefused(generation).catch((e) => this.logger.error(`SPAN: ${e?.name}`));
+        if (this.unanswered >= (this.unansweredLeft ?? UNANSWERED_STOP)) {
+          this.onRefused(generation, 'unanswered').catch((e) =>
+            this.logger.error(`SPAN: ${e?.name}`),
+          );
           return;
         }
       }
@@ -519,15 +545,22 @@ export class SpanApp {
     this.updateStatus().catch(() => {});
   }
 
-  /** The broker refused the credentials (or left the CONNECT unanswered twice): a final stop. */
-  async onRefused(generation) {
+  /**
+   * The broker refused the credentials (`refused`: stopped until a new
+   * pairing), or closed the CONNECT without answer twice in a row
+   * (`unanswered`: stopped until the test button, a save of the
+   * configuration or a new pairing). A stop kept in /data either way.
+   */
+  async onRefused(generation, code = 'refused') {
     if (generation !== this.generation) return;
     this.logger.warn(
-      'SPAN: the broker of the panel refused the credentials: stopped until a new pairing',
+      code === 'refused'
+        ? 'SPAN: the broker of the panel refused the credentials: stopped until a new pairing'
+        : 'SPAN: the broker of the panel closed twice without answering: automatic tries stopped',
     );
     this.endClient();
     this.clearReconnect();
-    this.kept.refusal = { code: 'refused', fp: fingerprint(this.kept.salt, this.config.stored) };
+    this.kept.refusal = { code, fp: fingerprint(this.kept.salt, this.config.stored) };
     await this.saveState();
     await this.updateStatus();
   }
@@ -566,6 +599,7 @@ export class SpanApp {
   onMessage(topic, payload) {
     const tree = this.tree;
     if (!tree) return;
+    this.lastMessageMono = this.monotonic();
     const what = tree.ingest(topic, payload);
     if (!what) return;
     if (
@@ -682,6 +716,11 @@ export class SpanApp {
   tick(generation) {
     if (generation !== this.generation) return;
     const mono = this.monotonic();
+    if (this.stale(mono)) {
+      // A panel silent too long: nothing published as new, the status says so.
+      this.updateStatus().catch(() => {});
+      return;
+    }
     if (
       this.lastFlushMono !== undefined &&
       mono - this.lastFlushMono < this.config.interval * 1000
@@ -779,10 +818,22 @@ export class SpanApp {
    * /data holds their guards; within STATES_PER_MINUTE, the subjects in
    * turn (a subject left out this time comes first next time).
    */
+  /**
+   * The panel said nothing for STALE_AFTER while the session is up (review
+   * r1, m4): its values are no longer published as current. It publishes no
+   * time stamp; its silence is measured here, on the monotonic clock.
+   */
+  stale(mono = this.monotonic()) {
+    return (
+      this.up && this.lastMessageMono !== undefined && mono - this.lastMessageMono > STALE_AFTER
+    );
+  }
+
   async flush({ only } = {}) {
     const generation = this.generation;
-    if (!only) this.lastFlushMono = this.monotonic();
-    if (!this.tree || !this.config.stored) return;
+    const mono = this.monotonic();
+    if (!only) this.lastFlushMono = mono;
+    if (!this.tree || !this.config.stored || this.stale(mono)) return;
     // Read now: never a reading older than this publication.
     const panel = readPanel(this.tree, this.config.stored.serial);
     if (panel.problem) return;
@@ -857,7 +908,7 @@ export class SpanApp {
   }
 
   async publishRelay(circuitId) {
-    if (!this.tree || !this.config.stored) return;
+    if (!this.tree || !this.config.stored || this.stale()) return;
     const serial = this.config.stored.serial;
     const panel = readPanel(this.tree, serial);
     if (panel.problem) return;
@@ -912,10 +963,21 @@ export class SpanApp {
       return;
     }
     if (this.kept.refusal) {
-      await this.setStatus(false, T.refused);
+      await this.setStatus(
+        false,
+        this.kept.refusal.code === 'unanswered' ? T.unansweredStop : T.refused,
+      );
+      return;
+    }
+    if (this.pinNotSaved) {
+      await this.setStatus(false, T.pinNotSaved);
       return;
     }
     const mono = this.monotonic();
+    if (this.stale(mono)) {
+      await this.setStatus(false, T.stale(mono - this.lastMessageMono));
+      return;
+    }
     const wait = this.retryAtMono === undefined ? 0 : Math.max(0, this.retryAtMono - mono);
     if (!this.up) {
       if (this.lastError === 'untrusted' || this.lastError === 'certificateDate') {
@@ -1105,11 +1167,21 @@ export class SpanApp {
         elapsed <= CONFIRM_WITHIN;
       if (!confirmed) {
         this.pendingPin = { at: mono, host, fingerprint: candidate.fingerprint };
+        // Another authority than the one shown a moment ago, same address:
+        // said plainly (review r1, m1), and it starts over (two clicks again).
+        const previous =
+          pending &&
+          pending.host === host &&
+          pending.fingerprint !== candidate.fingerprint &&
+          elapsed <= CONFIRM_WITHIN
+            ? pending.fingerprint
+            : undefined;
         return T.pair.confirmPin(
           status.serial,
           candidate.fingerprint,
           pinned?.fingerprint,
           CONFIRM_WITHIN,
+          previous,
         );
       }
     }
@@ -1222,6 +1294,15 @@ export class SpanApp {
 
   /** "Test the connection": what the session knows now (never a new connection). */
   async testConnection() {
+    if (this.kept.refusal?.code === 'unanswered') {
+      // A broker that closed without answering: one new try per click.
+      this.kept.refusal = null;
+      await this.saveState();
+      this.unanswered = 0;
+      this.unansweredLeft = 1;
+      this.failures = 0;
+      this.openSession(this.generation);
+    }
     if (this.up && this.tree) await this.refresh();
     else await this.updateStatus();
     const status = this.lastStatus ? JSON.parse(this.lastStatus)[1] : undefined;

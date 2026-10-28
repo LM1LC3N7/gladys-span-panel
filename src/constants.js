@@ -91,9 +91,14 @@ const MINUTE = 60 * SECOND;
 export const CONNECT_TIMEOUT = 15 * SECOND;
 /** Reconnection after a lost or failed session: 5 s, 15 s, 30 s, 1 min, 2 min, then 5 min. */
 export const RECONNECT = [5 * SECOND, 15 * SECOND, 30 * SECOND, MINUTE, 2 * MINUTE, 5 * MINUTE];
-/** A CONNECT left unanswered this many times in a row: the next tries are 15 min apart. */
-export const UNANSWERED_MAX = 3;
-export const UNANSWERED_PAUSE = 15 * MINUTE;
+/**
+ * A CONNECT left unanswered (closed without CONNACK) this many times in a
+ * row: no more automatic tries (a stop kept in /data, said as such, lifted by
+ * the test button, a save of the configuration or a new pairing).
+ */
+export const UNANSWERED_STOP = 2;
+/** No message of the panel for this long while the session is up: its values are stale. */
+export const STALE_AFTER = 5 * MINUTE;
 /** The panel CA the panel advertises is fetched again (to show it) at most this often. */
 export const CA_DIAGNOSE_EVERY = 15 * MINUTE;
 

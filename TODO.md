@@ -2,7 +2,8 @@
 
 ## Before announcing
 
-- [ ] Review r1 (xhigh: it commands circuits of the house).
+- [x] Review r1 (2026-10-28): REFUSÉ, 0 blocker, 3 important, 6 minor: fixed.
+- [ ] Review r2.
 - [ ] Test on a real Gladys 5.1+ with a real SPAN panel (firmware r202633 or
       later): pairing by passphrase and by proximity, device creation, the
       counters over a day, a relay opened and closed on an unimportant
@@ -31,6 +32,9 @@
       positive when charging.
 - [ ] Whether the energy counters drop after a reboot or a firmware update
       (the guard holds a drop; the user accepts it in two clicks).
+- [ ] That a panel publishes something at least every 5 minutes (power values
+      move constantly); otherwise the stale alarm (review r1, m4) would trip
+      on a quiet panel and STALE_AFTER must grow.
 - [ ] The relay command `switch/relay/set` and the state published back
       within 3 s; the requester `USER`.
 
@@ -95,8 +99,16 @@
   a ready panel, within 270 states a minute with the circuits in turn; a
   relay change at once (300 ms).
 - **Session**: one at a time, no reconnection by mqtt.js; 5 s, 15 s, 30 s,
-  1 min, 2 min, then 5 min; credentials refused (CONNACK 4, 5) or a CONNECT
-  left unanswered twice: a final stop until a new pairing. Packets bounded at
+  1 min, 2 min, then 5 min; credentials refused (CONNACK 4, 5): a final stop
+  until a new pairing; a CONNECT closed unanswered twice: a stop said as such
+  (not a refusal), one try per click of the test button or per save of the
+  configuration (review r1, m3). No message for 5 min while up: values not
+  published as current, status says so (m4).
+- **Review r1**: an accepted drop is a floor (guard, I1); the fingerprint
+  typed pins `seen` only once /data holds it, else no session and a status
+  (I2); tests for the 60/120 kW margins, the bound of the acceptance, the
+  budget against the 300 of the core (I3); another authority at the second
+  click said plainly (m1). Packets bounded at
   256 KB before they are read (PacketGuard of gladys-pglab).
 - **Structure**: app, store and guard from gladys-openems; MQTT transport from
   gladys-pglab; the test clock and certificates of `~/code/ref/gladys-testkit`
